@@ -1,0 +1,21 @@
+{
+  "name": "romance",
+  "version": "0.0.1",
+  "description": "An ORM/ActiveRecord node.js module for MySQL.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "orm",
+    "active",
+    "record"
+  ],
+  "author": "Juan I. Benavides <linnk87@gmail.com> (http://lionwriter.com)",
+  "license": "MIT",
+  "dependencies": {
+    "mysql": "^2.9.0",
+    "node-mysql": "^0.4.2",
+    "sequel": "^0.3.10"
+  }
+}
