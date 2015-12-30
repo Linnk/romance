@@ -1,28 +1,52 @@
-var Romance = require('./romance.js');
-var config = require('./config').config;
+var romance = require('./romance.js');
 
-var db = new Romance(config);
+var db = romance({
+	host:       'localhost',
+	user:       'root',
+	password:   'root',
+	database:   'incremen_crm',
+	port:       3306
+});
 
-db.connect(function(err){
+var Users = db.repository('users');
 
-	var Users = db.repository('users');
+Users.field('id').where('username = ?', 'linnk87@gmail.com').first(function(err, user, fields){
 
-	Users.find('first', {
-		conditions: {email: 'john@email.com'},
-		result: function(user, index) {
-			user.name = 'John doe';
-			user.save(function(err){
-	
-			});
+	console.log('First:', user);
+
+});
+
+Users.where('username LIKE ?', '%incrementacrm.com%').all(function(err, users, fields){
+
+	for (var n = 0; n < users.length; n++)
+	{
+		console.log('All: ' + users[n].name + ' :: ' + users[n].username);
+	}
+
+});
+
+Users.find('first', {
+	fields: ['id', 'username', 'name'],
+	conditions: [
+		['username LIKE ?', '%incrementacrm.com%'],
+	],
+	joins: [
+		{
+			type: 'LEFT',
+			table: 'company AS Company',
+			conditions: 'Company.id = User.id',
 		},
-		error: function(err) {
-			throw err;
-		},
-		end: function() {
-			// end of query
-		}
-	});
+	],
+	order: ['User.name ASC', 'User.username DESC', 'User.id'],
+	limit: 5,
+}).then(function(user){
+	user.name = 'Blanca Sánchez';
 
-	db.end();
+	return Users.save(user);
+}).then(function(user){
 
+	return Users.field('id').field('username').field('name').where('id = ?', user.id).find('first');
+}).then(function(user){
+
+	console.log(user);
 });

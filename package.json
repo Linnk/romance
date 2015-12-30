@@ -14,8 +14,10 @@
   "author": "Juan I. Benavides <linnk87@gmail.com> (http://lionwriter.com)",
   "license": "MIT",
   "dependencies": {
+    "inflection": "^1.8.0",
     "mysql": "^2.9.0",
     "node-mysql": "^0.4.2",
-    "sequel": "^0.3.10"
+    "sequel": "^0.3.10",
+    "squel": "^4.2.2"
   }
 }
