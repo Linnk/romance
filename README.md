@@ -15,7 +15,7 @@ Disclosure: This is yet experimental. DO NOT USE IT JUST YET.
 
 ## Examples
 
-So, this is all experimental and the main idea (hoping to finishing it the next week):
+So, this is all experimental, but the final idea is this:
 
 ```javascript
 var romance = require('./romance.js');
