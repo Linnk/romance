@@ -13,12 +13,6 @@ Disclosure: This is yet experimental. DO NOT USE IT JUST YET.
 
 ## Installation
 
-### node.js
-
-Install using [npm](http://npmjs.org/):
-
-    $ npm install romance
-
 ## Examples
 
 So, this is all experimental and the main idea (hoping to finishing it the next week):
