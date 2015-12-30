@@ -1,6 +1,6 @@
-# Romance - ORM / ActiveRecord abstraction
+# Romance - ORM / DataMapper abstraction
 
-A prototype draft for my future ORM / ActiveRecord abstraction.
+A prototype draft for my future ORM / DataMapper abstraction.
 
 Disclosure: This is yet experimental. DO NOT USE IT JUST YET.
 
@@ -23,37 +23,59 @@ Install using [npm](http://npmjs.org/):
 
 So, this is all experimental and the main idea (hoping to finishing it the next week):
 
-	var Romance = require('romance');
-	
-	var db = new Romance({
+	var romance = require('./romance.js');
+
+	var db = romance({
 		host:       'localhost',
 		user:       'root',
 		password:   'root',
-		database:   'database_name'
+		database:   'incremen_crm',
+		port:       3306
 	});
-	
-	db.connect(function(err){
-		var Users = db.repository('users');
-		
-		Users.where('email = ?', 'john@email.com').find(function(user, index){
-			user.email = 'john2@email.com';
-			user.save().then(function(err){
-				// saved
-			});
-		}).then(function(){
-			// found them!
-		});
-    	
-		Users.where('email = ?', 'john@email.com').all(function(users){
-			// Could be simple objects or entities
-		});
-    	
-		Users.findAllActive(function(users){
-			// Could be simple objects or entities
-		});
-    	
-		db.end();
+
+	var Users = db.repository('users');
+
+	Users.field('id').where('id = ?', 1337).first(function(err, user, fields){
+
+		console.log('First:', user);
+
 	});
+
+	Users.where('username LIKE ?', '%incrementacrm.com%').all(function(err, users, fields){
+
+		for (var n = 0; n < users.length; n++)
+		{
+			console.log('All: ' + users[n].name + ' :: ' + users[n].username);
+		}
+
+	});
+
+	Users.find('first', {
+		fields: ['id', 'username', 'name'],
+		conditions: [
+			['username LIKE ?', '%incrementacrm.com%'],
+		],
+		joins: [
+			{
+				type: 'LEFT',
+				table: 'company AS Company',
+				conditions: 'Company.id = User.id',
+			},
+		],
+		order: ['User.name ASC', 'User.username DESC', 'User.id'],
+		limit: 5,
+	}).then(function(user){
+		user.name = 'Blanca Sánchez';
+
+		return Users.save(user);
+	}).then(function(user){
+
+		return Users.field('id').field('username').field('name').where('id = ?', user.id).find('first');
+	}).then(function(user){
+
+		console.log(user);
+	});
+
 
 ## License
 

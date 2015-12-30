@@ -10,7 +10,7 @@ var db = romance({
 
 var Users = db.repository('users');
 
-Users.field('id').where('username = ?', 'linnk87@gmail.com').first(function(err, user, fields){
+Users.where('id = ?', 1337).first(function(err, user, fields){
 
 	console.log('First:', user);
 
