@@ -4,7 +4,20 @@ var mysql = require('mysql');
 var squel = require('squel');
 var inflection = require('inflection');
 
-var romance = null;
+var databases = {};
+
+module.exports = function(config)
+{
+	var key = config.socketPath ? config.socketPath : (config.host || 'localhost') + ':' + (config.host || 3306);
+	key += '/' + config.user + '@' + config.database;
+
+	if (!databases[key])
+	{
+		databases[key] = new Romance(config);
+	}
+
+	return databases[key];
+}
 
 class Romance
 {
@@ -13,35 +26,82 @@ class Romance
 		if (!options.connectionLimit)
 			options.connectionLimit = 1;
 
-		this.config = options;
-		this.squel = squel;
 		this.mysql = mysql;
+		this.squel = squel;
+
+		this.config = options;
 		this.pool = null;
 
 		this.repositories = {};
-		this.queries = 0;
+		this.working = 0;
+	}
+
+	_increase_work()
+	{
+		if (this.working++ === 0)
+		{
+			console.log('OPEN CONNECTION');
+			this.pool = this.mysql.createPool(this.config);
+		}
+	}
+
+	_decrease_work()
+	{
+		if (--this.working === 0)
+		{
+			console.log('CLOSING CONNECTION');
+			this.close();
+		}
 	}
 
 	query(sql, callback)
 	{
-		if (this.queries === 0)
+		this._increase_work();
+
+		if (typeof callback === 'function')
 		{
-			console.log('OPEN CONNECTION');
-			this.pool = mysql.createPool(this.config);
+			this.pool.query(sql, (err, rows, fields) => {
+				setImmediate(callback, err, rows, fields);
+				setTimeout(this._decrease_work.bind(this), 10);
+			});
+
+			return this;
 		}
 
-		this.queries++;
-
-		this.pool.query(sql, (function(err, rows, fields){
-			setImmediate(callback, err, rows, fields);
-			setTimeout((function(){
-				if (--this.queries === 0)
+		return new Promise((resolve, reject) => {
+			this.pool.query(sql, (err, result) => {
+				if (err)
 				{
-					console.log('CLOSING CONNECTION');
-					this.close();
+					reject(err);
 				}
-			}).bind(this), 10);
-		}).bind(this));
+				else
+				{
+					resolve(result);
+				}
+				setTimeout(this._decrease_work.bind(this), 10);
+			});
+		});
+	}
+
+	begin(callback)
+	{
+		this._increase_work();
+
+		return this.query('START TRANSACTION;', callback);
+	}
+
+	commit(callback)
+	{
+		setTimeout(this._decrease_work, 10);
+
+		return this.query('COMMIT;', callback);
+	}
+
+	rollback(callback)
+	{
+		setTimeout(this._decrease_work, 10);
+
+		return this.query('ROLLBACK;', callback);
 	}
 
 	close(callback)
@@ -52,7 +112,7 @@ class Romance
 	repository(table, alias)
 	{
 		if (!this.repositories[table])
-			this.repositories[table] = new Repository(table, alias);
+			this.repositories[table] = new Repository(table, alias, this);
 
 		return this.repositories[table];
 	}
@@ -60,11 +120,11 @@ class Romance
 
 class Repository
 {
-	constructor(table, alias)
+	constructor(table, alias, db)
 	{
 		this.table = table;
 		this.alias = alias ? alias : inflection.classify(inflection.singularize(table));
-		this.options = {};
+		this.db = db;
 
 		var passing = ['field', 'where', 'group', 'order', 'limit'];
 
@@ -108,9 +168,20 @@ class Repository
 
 		var sql = this.__sql.toString();
 
-		romance.query(sql, callback);
+		this.db.query(sql, callback);
 
 		this.__sql = null;
+	}
+
+	count(callback)
+	{
+		this._initSelectIfNeeded();
+
+		this.__sql.field('COUNT(*)', 'total');
+
+		this.all(function(err, rows, fields){
+			callback(err, result && rows.length > 0 && rows[0].total ? parseInt(rows[0].total) : 0);
+		});
 	}
 
 	find(type, options)
@@ -122,15 +193,22 @@ class Repository
 			options = {}
 		}
 
-		if (typeof options.fields === 'string')
+		if (type === 'count')
 		{
-			options.fields = options.fields.split(',');
+			this.__sql.field('COUNT(*)', 'total');
 		}
-		if (options.fields instanceof Array)
+		else
 		{
-			for (var i = 0; i < options.fields.length; i++)
+			if (typeof options.fields === 'string')
 			{
-				this.__sql.field(options.fields[i]);
+				options.fields = options.fields.split(',');
+			}
+			if (options.fields instanceof Array)
+			{
+				for (var i = 0; i < options.fields.length; i++)
+				{
+					this.__sql.field(options.fields[i]);
+				}
 			}
 		}
 
@@ -193,25 +271,25 @@ class Repository
 
 		this.__sql = null;
 
-		return new Promise(function(resolve, reject) {
-			romance.query(sql, function(err, rows, fields){
-				if (err)
+		return new Promise((resolve, reject) => {
+			this.db.query(sql).then(result => {
+				if (type === 'first')
 				{
-					reject(err);
+					resolve(result && result.length > 0 ? result[0] : null)
+				}
+				else if (type === 'count')
+				{
+					resolve(result && result.length > 0 && result[0].total ? parseInt(result[0].total) : 0);
 				}
 				else
 				{
-					if (type === 'first')
-					{
-						rows = rows && rows.length > 0 ? rows[0] : null;
-					}
-					resolve(rows);
+					resolve(result);
 				}
-			});
+			}).catch(reject);
 		});
 	}
 
-	save(entity)
+	save(entity, callback)
 	{
 		var sql = squel.update().table(this.table, this.alias);
 		var keys = Object.keys(entity);
@@ -225,36 +303,30 @@ class Repository
 		}
 
 		sql.where('id = ?', entity.id || null);
+		sql = sql.toString();
 
-		console.log(sql.toString());
+		console.log(sql);
 
-		return new Promise(function(resolve, reject) {
-			romance.query(sql.toString(), function(err, result){
-				if (err)
-				{
-					reject(err);
-				}
-				else
-				{
-					resolve(entity);
-				}
-			});
-		});
+		return this.db.query(sql, callback);
 	}
 
-	count(conditions)
+	query(sql, callback)
 	{
-		console.log(this.table + ' :: count()');
-		//console.log(conditions);
+		return this.db.query(sql, callback);
 	}
-}
 
-module.exports = function(config)
-{
-	if (!romance)
+	begin(callback)
 	{
-		romance = new Romance(config);
+		return this.db.begin(callback);
 	}
 
-	return romance;
+	commit(callback)
+	{
+		return this.db.commit(callback);
+	}
+
+	rollback(callback)
+	{
+		return this.db.rollback(callback);
+	}
 }
